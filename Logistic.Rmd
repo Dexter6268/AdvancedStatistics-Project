@@ -1,0 +1,135 @@
+---
+title: "Logistic"
+author: "Zheng Chuyang"
+date: "2024-12-03"
+output: html_document
+---
+```{r}
+# without SMOTE
+train_no_smote.df = read.csv("data/train_data_4r_no_smote.csv")
+train_no_smote.df$stroke<-ifelse(train_no_smote.df$stroke=="Yes",1,0)
+model_without_smote = glm(stroke ~ ., train_no_smote.df, family='binomial')
+summary(model_without_smote)
+```
+
+```{r}
+# with SMOTE
+train.df = read.csv("data/train_data_4r.csv")
+train.df$stroke<-ifelse(train.df$stroke=="Yes",1,0)
+full_model = glm(stroke ~ ., train.df, family='binomial')
+summary(full_model)
+```
+
+```{r}
+library(pROC)
+library(caret)
+train.df = read.csv("data/train_data_4r.csv")
+set.seed(123)
+ctrl <- trainControl(
+  method = "cv",       # 交叉验证
+  number = 5,          # 5折交叉验证
+  summaryFunction = twoClassSummary,  # 使用二分类模型的多种评估指标
+  classProbs = TRUE,   # 计算概率值，用于AUC
+  savePredictions = "final"  # 保存每折的预测结果
+)
+
+model <- train(
+  stroke ~ .,   # 公式
+  data = train.df,           # 数据集
+  method = "glm",        # 使用逻辑回归
+  family = "binomial",   # 指定逻辑回归的家庭（binomial）
+  trControl = ctrl,      # 设置交叉验证控制
+  metric = "ROC"         # 设置AUC为评估指标
+)
+print(model)
+```
+```{r}
+# 查看每折的预测结果
+head(model$pred)
+```
+```{r}
+test.df = read.csv("data/test_data_4r.csv")
+predictions = predict(model, newdata = test.df)
+```
+
+
+```{r}
+# conf_matrix <- confusionMatrix(as.factor(model$pred$pred), as.factor(model$pred$obs))
+conf_matrix <- confusionMatrix(as.factor(predictions), as.factor(test.df$stroke))
+print(conf_matrix)
+accuracy <- conf_matrix$overall['Accuracy']
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1 Score:", f1_score, "\n")
+
+# 计算AUC
+roc_curve <- roc(model$pred$obs, model$pred$yes)  # 'Yes' 是事件类别的预测概率
+auc_value <- auc(roc_curve)
+
+cat("AUC:", auc_value, "\n")
+```
+
+
+```{r}
+library(car)
+vif(model0)
+```
+```{r}
+step(full_model, k=2, direction="backward")
+```
+model after backward selection：
+stroke ~ gender + age + heart_disease + ever_married + 
+    work_type + Residence_type + avg_glucose_level + smoking_status
+    
+variables ruled out:
+hypertension, bmi
+```{r}
+train.df$stroke<-ifelse(train.df$stroke=="yes",1,0)
+model_selected = glm(stroke ~ gender + age + heart_disease + ever_married + 
+    work_type + Residence_type + avg_glucose_level + smoking_status, train.df, family='binomial')
+summary(model_selected)
+```
+```{r}
+train.df = read.csv("data/train_data_4r.csv")
+
+model <- train(
+  stroke ~ gender + age + heart_disease + ever_married + 
+    work_type + Residence_type + avg_glucose_level + smoking_status,   # 公式
+  data = train.df,           # 数据集
+  method = "glm",        # 使用逻辑回归
+  family = "binomial",   # 指定逻辑回归的家庭（binomial）
+  trControl = ctrl,      # 设置交叉验证控制
+  metric = "ROC"         # 设置AUC为评估指标
+)
+print(model)
+```
+```{r}
+conf_matrix <- confusionMatrix(as.factor(model$pred$pred), as.factor(model$pred$obs))
+print(conf_matrix)
+accuracy <- conf_matrix$overall['Accuracy']
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1 Score:", f1_score, "\n")
+
+# 计算AUC
+roc_curve <- roc(model$pred$obs, model$pred$yes)  # 'Yes' 是事件类别的预测概率
+auc_value <- auc(roc_curve)
+
+cat("AUC:", auc_value, "\n")
+```
+
+```{r}
+
+predictions = predict(model, newdata = test.df)
+```
+
