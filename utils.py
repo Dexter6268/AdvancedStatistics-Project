@@ -42,7 +42,7 @@ def preprocess(data: pd.DataFrame):
     imputer = KNNImputer(n_neighbors=4, weights="uniform")
     data = imputer.fit_transform(data)
     data = pd.DataFrame(data, columns=column_names)
-    data[var_cat] = data_cat
+    data[var_cat] = data_cat.values
 
     preprocessor = ColumnTransformer(
         transformers=[
@@ -106,9 +106,9 @@ def oversampling(data):
     data = pd.concat([data_not_stroke, data_stroke_oversampling], axis = 0)
     return data
 
-data = read_data()
+# data = read_data()
 
-train, test = preprocess4r(data)
-train.to_csv('./data/train_data_4r.csv', index=False)
-test.to_csv('./data/test_data_4r.csv', index=False)
+# train, test = preprocess4r(data)
+# train.to_csv('./data/train_data_4r.csv', index=False)
+# test.to_csv('./data/test_data_4r.csv', index=False)
 

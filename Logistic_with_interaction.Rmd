@@ -1,0 +1,217 @@
+---
+title: "Logistic_with_interaction"
+author: "Li Suqi"
+date: "2024-12-15"
+output: html_document
+---
+
+考虑交互效应的逻辑回归分析过程：
+1. 考虑到因子之间可能存在相互影响的关系，在模型中加入交互项。可能存在交互效应的因子如下：
+Hypertension和Heart Disease：高血压（hypertension）和心脏病（heart_disease）都属于与心血管健康密切相关的因素。这两者之间可能存在交互作用，因为高血压可能增加发生心脏病的风险，反之亦然。患有高血压的人群，若同时有心脏病，可能更容易发生中风（stroke）。
+Hypertension和Age：随着年龄的增长，患高血压的风险增加。因此，年龄与高血压之间可能存在交互作用。老年人群体中高血压的影响可能更加显著，进而增加中风的风险。
+BMI和Glucose Level：体重指数（BMI）和平均血糖水平（avg_glucose_level）通常与代谢健康密切相关，BMI较高的人可能更容易出现糖尿病或高血糖。因此，这两个变量之间可能存在交互作用，高BMI和高血糖可能共同增加中风的风险。
+Smoking Status和Hypertension：吸烟（smoking_status）和高血压（hypertension）都是已知的中风风险因素。吸烟可能加剧高血压的负面影响，从而进一步提高发生中风的概率。因此，吸烟状态与高血压之间可能存在交互作用。
+Smoking Status和Heart Disease：吸烟（smoking_status）和心脏病（heart_disease）都是已知的中风风险因素。吸烟可能加剧心脏病的负面影响，从而进一步提高发生中风的概率。因此，吸烟状态与心脏病之间可能存在交互作用。
+Ever Married和Residence Type：婚姻状况（ever_married）和居住类型（Residence_type）可能与社会经济状况、生活方式和健康管理行为相关。已婚的人可能与家庭成员有更多的健康支持，而居住在城市（Urban）的人群可能有更好的医疗资源。这两者之间可能存在交互作用，影响中风的发生。
+2. subset selection。考虑到可解释性，我们倾向于更小的模型，因此使用BIC准则。为了选择最好的模型，使用结合了forward和backward优点的双向逐步选择。
+3. shrinkage。在subset selection中发现了较强的多重共线性，且我们希望构建小模型，因此我们使用Elastic net方法。
+
+```{r}
+# 加载相关包
+library(caret)
+library(pROC)
+
+# 读取数据with smote
+train.df = read.csv("data/train_data_4r.csv")
+train.df$stroke <- ifelse(train.df$stroke == "Yes", 1, 0)
+test.df = read.csv("data/test_data_4r.csv")
+test.df$stroke <- ifelse(test.df$stroke == "Yes", 1, 0)
+
+# 训练逻辑回归模型，考虑所有主效应和所选交互项
+full_model <- glm(
+  stroke ~ hypertension * heart_disease + 
+          hypertension * age + 
+          bmi * avg_glucose_level + 
+          smoking_status * hypertension + 
+          smoking_status * heart_disease +
+          ever_married * Residence_type + 
+          gender + 
+          age + 
+          hypertension + 
+          heart_disease + 
+          ever_married + 
+          work_type + 
+          Residence_type + 
+          avg_glucose_level + 
+          bmi + 
+          smoking_status,
+  data = train.df, 
+  family = binomial
+)
+
+# 在测试集上进行预测
+pred_prob <- predict(full_model, test.df, type = "response")
+pred_class <- ifelse(pred_prob > 0.5, 1, 0)
+
+# 创建混淆矩阵
+conf_matrix <- confusionMatrix(factor(pred_class), factor(test.df$stroke))
+print(conf_matrix)
+
+# 计算准确率、精确率、召回率、F1分数
+accuracy <- conf_matrix$overall['Accuracy']
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- (2 * precision * recall) / (precision + recall)
+
+cat("Accuracy: ", accuracy, "\n")
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1 Score: ", f1_score, "\n")
+
+# 计算 ROC 曲线并绘制
+roc_curve <- roc(test.df$stroke, pred_prob)
+plot(roc_curve, main = "ROC Curve", col = "blue")
+
+# 计算 AUC
+auc_value <- auc(roc_curve)
+cat("AUC: ", auc_value, "\n")
+```
+
+```{r}
+# 使用step函数进行双向逐步回归，基于BIC进行变量选择
+step_model <- step(full_model, direction = "both", k = log(nrow(train.df)), trace = 0)
+
+# 在测试集上进行预测
+pred_prob <- predict(step_model, test.df, type = "response")
+pred_class <- ifelse(pred_prob > 0.5, 1, 0)
+
+# 创建混淆矩阵
+conf_matrix <- confusionMatrix(factor(pred_class), factor(test.df$stroke))
+print(conf_matrix)
+
+# 计算准确率、精确率、召回率、F1分数
+accuracy <- conf_matrix$overall['Accuracy']
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- (2 * precision * recall) / (precision + recall)
+
+cat("Accuracy: ", accuracy, "\n")
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1 Score: ", f1_score, "\n")
+
+# 计算 ROC 曲线并绘制
+roc_curve <- roc(test.df$stroke, pred_prob)
+plot(roc_curve, main = "ROC Curve", col = "blue")
+
+# 计算 AUC
+auc_value <- auc(roc_curve)
+cat("AUC: ", auc_value, "\n")
+```
+
+```{r}
+# 检查多重共线性
+alias(step_model)
+```
+alias()函数的输出显示了回归模型中的线性依赖关系或“别名”问题。从alias()函数的输出可以看出，模型中存在多个完美线性依赖关系。每一行中的0表示相应变量的系数与其他变量的系数是完美相关的，因此无法独立估计。
+
+```{r}
+# 加载必要的包
+library(glmnet)
+
+# 准备训练数据（排除目标变量 'stroke' 和无关的列）
+X_train <- train.df[, -which(names(train.df) == "stroke")]
+X_train <- model.matrix(~ . - 1, data = X_train)  # 自动转换所有分类变量
+y_train <- train.df$stroke
+
+# 准备测试数据
+X_test <- test.df[, -which(names(test.df) == "stroke")]
+X_test <- model.matrix(~ . - 1, data = X_test)  # 自动转换所有分类变量
+y_test <- test.df$stroke
+
+X_train <- as.data.frame(X_train)
+X_test <- as.data.frame(X_test)
+
+# 创建交互项
+X_train_interaction <- data.frame(
+  hypertension_heart_disease = X_train$hypertensionYes * X_train$heart_diseaseYes,
+  hypertension_age = X_train$hypertensionYes * X_train$age,
+  bmi_avg_glucose_level = X_train$bmi * X_train$avg_glucose_level,
+  smoking_statussmokes_hypertension = X_train$smoking_statussmokes * X_train$hypertensionYes,
+  smoking_statusneversmoked_hypertension = X_train$`smoking_statusnever smoked` * X_train$hypertensionYes,
+  smoking_statusunknown_hypertension = X_train$smoking_statusUnknown * X_train$hypertensionYes,
+  smoking_statussmokes_heart_disease = X_train$smoking_statussmokes * X_train$heart_diseaseYes,
+  smoking_statusneversmoked_heart_disease = X_train$`smoking_statusnever smoked` * X_train$heart_diseaseYes,
+  smoking_statusunknown_heart_disease = X_train$smoking_statusUnknown * X_train$heart_diseaseYes,
+  ever_married_Residence_type = X_train$ever_marriedYes * X_train$Residence_typeUrban
+)
+
+
+# 将交互项和原始特征合并在一起
+X_train_final <- cbind(X_train, X_train_interaction)
+
+# 创建交互项
+X_test_interaction <- data.frame(
+  hypertension_heart_disease = X_test$hypertensionYes * X_test$heart_diseaseYes,
+  hypertension_age = X_test$hypertensionYes * X_test$age,
+  bmi_avg_glucose_level = X_test$bmi * X_test$avg_glucose_level,
+  smoking_statussmokes_hypertension = X_test$smoking_statussmokes * X_test$hypertensionYes,
+  smoking_statusneversmoked_hypertension = X_test$`smoking_statusnever smoked` * X_test$hypertensionYes,
+  smoking_statusunknown_hypertension = X_test$smoking_statusUnknown * X_test$hypertensionYes,
+  smoking_statussmokes_heart_disease = X_test$smoking_statussmokes * X_test$heart_diseaseYes,
+  smoking_statusneversmoked_heart_disease = X_test$`smoking_statusnever smoked` * X_test$heart_diseaseYes,
+  smoking_statusunknown_heart_disease = X_test$smoking_statusUnknown * X_test$heart_diseaseYes,
+  ever_married_Residence_type = X_test$ever_marriedYes * X_test$Residence_typeUrban
+)
+
+# 将交互项和原始特征合并在一起
+X_test_final <- cbind(X_test, X_test_interaction)
+
+# 转换为矩阵形式，glmnet要求特征矩阵是数值型矩阵
+X_train_matrix <- as.matrix(X_train_final)
+X_test_matrix <- as.matrix(X_test_final)
+
+# 训练 Elastic Net 模型
+# alpha 控制 Lasso (alpha = 1) 与 Ridge (alpha = 0) 的混合程度
+# 默认情况下，glmnet会自动选择lambda范围，或者你可以通过交叉验证来选择最优的lambda
+elastic_net_model <- glmnet(X_train_matrix, y_train, family = "binomial", alpha = 0.5)
+
+# 查看模型系数（对于多个lambda值的系数）
+plot(elastic_net_model)
+
+# 使用交叉验证选择最佳的 lambda
+cv_model <- cv.glmnet(X_train_matrix, y_train, family = "binomial", alpha = 0.5)
+
+# 查看交叉验证选择的最佳 lambda
+best_lambda <- cv_model$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+
+# 使用最佳的 lambda 拟合模型
+final_model <- glmnet(X_train_matrix, y_train, family = "binomial", alpha = 0.5, lambda = best_lambda)
+
+# 预测测试集的概率
+pred_probs <- predict(final_model, X_test_matrix, type = "response")
+
+# 将预测结果转换为类标签（根据0.5的阈值）
+pred_labels <- ifelse(pred_probs > 0.5, 1, 0)
+
+# 计算模型在测试集上的准确率、精度、召回率等指标
+accuracy <- mean(pred_labels == y_test)
+cat("Accuracy: ", accuracy, "\n")
+
+# 计算精度 (Precision)、召回率 (Recall) 和 F1 Score
+library(caret)
+conf_matrix <- confusionMatrix(as.factor(pred_labels), as.factor(y_test))
+cat("Precision: ", conf_matrix$byClass['Precision'], "\n")
+cat("Recall: ", conf_matrix$byClass['Recall'], "\n")
+cat("F1 Score: ", conf_matrix$byClass['F1'], "\n")
+
+# 计算 AUC
+library(pROC)
+roc_curve <- roc(y_test, as.vector(pred_probs))
+auc_score <- auc(roc_curve)
+cat("AUC: ", auc_score, "\n")
+
+# 绘制 ROC 曲线
+plot(roc_curve, main = "ROC Curve", col = "blue")
+```

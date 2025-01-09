@@ -13,11 +13,27 @@ summary(model_without_smote)
 ```
 
 ```{r}
+library(xtable)
+library(flextable)
+library(officer)
+
 # with SMOTE
 train.df = read.csv("data/train_data_4r.csv")
 train.df$stroke<-ifelse(train.df$stroke=="Yes",1,0)
 full_model = glm(stroke ~ ., train.df, family='binomial')
+options(width = 1500)
+
+# sink("glm_summary.txt")
 summary(full_model)
+# sink()
+
+
+# sum1 = summary(full_model)
+# m1 = as_flextable(xtable(sum1))
+# doc = read_docx()
+# doc = body_add_flextable(doc, m1)
+# print(doc,"m1.docx")
+
 ```
 
 ```{r}
@@ -49,14 +65,13 @@ head(model$pred)
 ```
 ```{r}
 test.df = read.csv("data/test_data_4r.csv")
-predictions = predict(model, newdata = test.df)
-```
+y_true = test.df$stroke
+y_pred_prob = predict(model, newdata = test.df, type="prob")$Yes
+y_pred = predict(model, newdata = test.df)
+roc_curve <- roc(y_true, y_pred_prob)
+auc_value <- auc(roc_curve)
+confusionMatrix(as.factor(y_pred), as.factor(y_true), positive="Yes")
 
-
-```{r}
-# conf_matrix <- confusionMatrix(as.factor(model$pred$pred), as.factor(model$pred$obs))
-conf_matrix <- confusionMatrix(as.factor(predictions), as.factor(test.df$stroke))
-print(conf_matrix)
 accuracy <- conf_matrix$overall['Accuracy']
 precision <- conf_matrix$byClass['Pos Pred Value']
 recall <- conf_matrix$byClass['Sensitivity']
@@ -66,70 +81,52 @@ cat("Accuracy:", accuracy, "\n")
 cat("Precision:", precision, "\n")
 cat("Recall:", recall, "\n")
 cat("F1 Score:", f1_score, "\n")
-
-# 计算AUC
-roc_curve <- roc(model$pred$obs, model$pred$yes)  # 'Yes' 是事件类别的预测概率
-auc_value <- auc(roc_curve)
-
-cat("AUC:", auc_value, "\n")
+cat("AUC:", auc_value)
 ```
 
 
 ```{r}
 library(car)
-vif(model0)
+vif(full_model)
 ```
-```{r}
-step(full_model, k=2, direction="backward")
-```
-model after backward selection：
-stroke ~ gender + age + heart_disease + ever_married + 
-    work_type + Residence_type + avg_glucose_level + smoking_status
-    
-variables ruled out:
-hypertension, bmi
-```{r}
-train.df$stroke<-ifelse(train.df$stroke=="yes",1,0)
-model_selected = glm(stroke ~ gender + age + heart_disease + ever_married + 
-    work_type + Residence_type + avg_glucose_level + smoking_status, train.df, family='binomial')
-summary(model_selected)
-```
-```{r}
-train.df = read.csv("data/train_data_4r.csv")
 
-model <- train(
-  stroke ~ gender + age + heart_disease + ever_married + 
-    work_type + Residence_type + avg_glucose_level + smoking_status,   # 公式
-  data = train.df,           # 数据集
-  method = "glm",        # 使用逻辑回归
-  family = "binomial",   # 指定逻辑回归的家庭（binomial）
-  trControl = ctrl,      # 设置交叉验证控制
-  metric = "ROC"         # 设置AUC为评估指标
-)
-print(model)
-```
+
 ```{r}
-conf_matrix <- confusionMatrix(as.factor(model$pred$pred), as.factor(model$pred$obs))
-print(conf_matrix)
+library(MASS)
+null_model = glm(stroke ~ 1, data=train.df, family=binomial)
+
+stepwise_model <- stepAIC(null_model, scope = list(lower = null_model, upper = full_model), direction = "both")
+summary(stepwise_model)
+
+# n = nrow(train.df)
+# step(full_model, k=log(n), direction="backward")
+```
+model after both selection：
+stroke ~ age + work_type + ever_married + heart_disease + avg_glucose_level + smoking_status + Residence_type + gender+ hypertension
+    
+variables ruled out: bmi
+```{r}
+test.df = read.csv("data/test_data_4r.csv")
+library(caret)
+
+y_true = test.df$stroke
+y_pred_prob = predict(stepwise_model, test.df, type="response")
+y_pred = ifelse(y_pred_prob > 0.5, "Yes", "No")
+roc_obj <- roc(y_true, y_pred_prob)
+auc_value <- auc(roc_obj)
+
+conf_matrix = confusionMatrix(factor(y_pred), factor(y_true), positive="Yes")
 accuracy <- conf_matrix$overall['Accuracy']
 precision <- conf_matrix$byClass['Pos Pred Value']
 recall <- conf_matrix$byClass['Sensitivity']
 f1_score <- 2 * (precision * recall) / (precision + recall)
 
+print(conf_matrix)
 cat("Accuracy:", accuracy, "\n")
 cat("Precision:", precision, "\n")
 cat("Recall:", recall, "\n")
 cat("F1 Score:", f1_score, "\n")
-
-# 计算AUC
-roc_curve <- roc(model$pred$obs, model$pred$yes)  # 'Yes' 是事件类别的预测概率
-auc_value <- auc(roc_curve)
-
-cat("AUC:", auc_value, "\n")
+cat("AUC:", auc_value)
 ```
 
-```{r}
-
-predictions = predict(model, newdata = test.df)
-```
 
